@@ -135,7 +135,7 @@ make -j$(nproc --all) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CC=clang \
   CLANG_TRIPLE=aarch64-linux-gnu- \
   CROSS_COMPILE=aarch64-linux-gnu- \
   CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-  KCFLAGS="-O3 -mcpu=cortex-a76.cortex-a55 -mtune=cortex-a76.cortex-a55 -Wno-error" \
+  KCFLAGS="-O3 -mcpu=cortex-a76 -mtune=cortex-a76 -Wno-error" \
   CFLAGS_KERNEL="-Wno-error" CFLAGS_MODULE="-Wno-error" \
   dtbs Image.gz
 ```

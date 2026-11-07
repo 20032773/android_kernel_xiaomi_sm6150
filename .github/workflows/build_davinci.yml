@@ -56,6 +56,8 @@ jobs:
           COMMON_ARGS=(
             O=out
             ARCH=arm64
+            SHELL=/bin/bash
+            CONFIG_SHELL=/bin/bash
             LLVM=1
             LLVM_IAS=1
             CC=clang
@@ -144,11 +146,15 @@ jobs:
 
       - name: Compile Kernel, DTBs & DTBOs
         run: |
-          OPT_FLAGS="-O3 -mcpu=cortex-a76.cortex-a55 -mtune=cortex-a76.cortex-a55 -Wno-error"
+          # Clang/LLVM uses single-core ARMv8.2-A DynamIQ target name 'cortex-a76'
+          # (Cortex-A76 & Cortex-A55 share identical ARMv8.2-A + DotProd + Crypto + LSE ISA)
+          OPT_FLAGS="-O3 -mcpu=cortex-a76 -mtune=cortex-a76 -Wno-error"
 
           make -j"$(nproc --all)" \
             O=out \
             ARCH=arm64 \
+            SHELL=/bin/bash \
+            CONFIG_SHELL=/bin/bash \
             LLVM=1 \
             LLVM_IAS=1 \
             CC=clang \
