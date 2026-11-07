@@ -1,0 +1,240 @@
+name: Build Redmi K20 (davinci) LOS 23.2 Kernel
+
+on:
+  push:
+    branches:
+      - lineage-23.2
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-davinci:
+    name: Build Davinci 825MHz SukiSU-Ultra + SUSFS (Clang 20)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Maximize Runner Disk Space & Checkout Kernel Source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bc bison build-essential ca-certificates ccache cpio curl \
+            device-tree-compiler file flex git kmod libelf-dev libncurses-dev \
+            libssl-dev lz4 lzop pahole python3 python-is-python3 rsync \
+            tar unzip wget xz-utils zip zstd \
+            binutils-aarch64-linux-gnu binutils-arm-linux-gnueabi
+
+      - name: Download ZyCromerZ Clang 20 Toolchain
+        run: |
+          mkdir -p "$HOME/clang"
+          echo "Querying ZyCromerZ Clang 20 release..."
+          CLANG_URL=$(curl -sL "https://api.github.com/repos/ZyCromerZ/Clang/releases?per_page=100&page=2" \
+            | python3 -c "import sys, json; rels = json.load(sys.stdin); urls = [a['browser_download_url'] for r in rels if r.get('tag_name','').startswith('20.') for a in r.get('assets',[]) if a['name'].endswith('.tar.gz')]; print(urls[0] if urls else '')" || true)
+          if [ -z "$CLANG_URL" ]; then
+            CLANG_URL="https://github.com/ZyCromerZ/Clang/releases/download/20.0.0git-20250129-release/Clang-20.0.0git-20250129.tar.gz"
+          fi
+          echo "Downloading Clang 20 from: $CLANG_URL"
+          aria_or_curl() {
+            curl -fL --retry 5 --retry-delay 3 "$1" -o /tmp/clang20.tar.gz
+          }
+          aria_or_curl "$CLANG_URL"
+          tar -xzf /tmp/clang20.tar.gz -C "$HOME/clang"
+          rm -f /tmp/clang20.tar.gz
+          echo "$HOME/clang/bin" >> "$GITHUB_PATH"
+          "$HOME/clang/bin/clang" --version
+
+      - name: Configure Davinci Defconfig & Enforce Performance/Root Switches
+        run: |
+          COMMON_ARGS=(
+            O=out
+            ARCH=arm64
+            LLVM=1
+            LLVM_IAS=1
+            CC=clang
+            CLANG_TRIPLE=aarch64-linux-gnu-
+            CROSS_COMPILE=aarch64-linux-gnu-
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+          )
+
+          # Step 1/4 verified LineageOS 23.2 davinci config structure:
+          # base vendor/sdmsteppe-perf_defconfig + fragment vendor/davinci.config
+          make "${COMMON_ARGS[@]}" vendor/sdmsteppe-perf_defconfig vendor/davinci.config
+
+          # Re-enforce Step 6 critical switches via ./scripts/config
+          ./scripts/config --file out/.config \
+            -e OVERLAY_FS \
+            -e KSU \
+            -d KSU_DEBUG \
+            -d KSU_KPROBES_HOOK \
+            -d KSU_TRACEPOINT_HOOK \
+            -e KSU_MANUAL_HOOK \
+            -e KSU_SUSFS \
+            -e KSU_SUSFS_SUS_PATH \
+            -e KSU_SUSFS_SUS_MOUNT \
+            -e KSU_SUSFS_SUS_KSTAT \
+            -e KSU_SUSFS_TRY_UMOUNT \
+            -e KSU_SUSFS_SPOOF_UNAME \
+            -e KSU_SUSFS_ENABLE_LOG \
+            -e SCHED_CASS \
+            -e CPU_BOOST \
+            -e LRU_GEN \
+            -e LRU_GEN_ENABLED \
+            -e CRYPTO_LZ4 \
+            -e ZRAM \
+            -e ZRAM_DEF_COMP_LZ4 \
+            -d HZ_100 \
+            -d HZ_250 \
+            -e HZ_300 \
+            -d HZ_1000 \
+            --set-val HZ 300 \
+            -e NET_SCH_FQ \
+            -e TCP_CONG_ADVANCED \
+            -e TCP_CONG_BBR \
+            -e DEFAULT_BBR \
+            --set-str DEFAULT_TCP_CONG "bbr" \
+            -e ARM64_CRYPTO \
+            -e CRYPTO_AES_ARM64_CE_BLK \
+            -e CRYPTO_SHA2_ARM64_CE \
+            -e CRYPTO_CHACHA20_NEON \
+            -d LTO_NONE \
+            -e LTO_CLANG \
+            -e THINLTO \
+            -e CC_OPTIMIZE_FOR_PERFORMANCE \
+            -d CC_OPTIMIZE_FOR_SIZE \
+            -e BUILD_ARM64_APPENDED_DTB_IMAGE \
+            -e IMG_GZ_DTB \
+            -e BUILD_ARM64_KERNEL_COMPRESSION_GZIP \
+            -e BUILD_ARM64_DT_OVERLAY \
+            -e SECURITY_SELINUX \
+            -e DEBUG_FS \
+            -d SLUB_DEBUG \
+            -d FTRACE \
+            -d FUNCTION_TRACER \
+            -d ENABLE_DEFAULT_TRACERS \
+            -d KPROBES \
+            -d UPROBES \
+            -d AUDIT \
+            -d AUDITSYSCALL \
+            -d SCHED_DEBUG \
+            -d SCHEDSTATS \
+            -d DEBUG_PREEMPT \
+            -d CORESIGHT \
+            -d BLK_DEV_IO_TRACE \
+            -d MSM_TZ_LOG \
+            -d PAGE_OWNER \
+            -d LOCK_STAT \
+            -d DEBUG_INFO \
+            -d PROFILING \
+            -d PM_DEBUG \
+            -d MSM_SDE_ROTATOR_EVTLOG_DEBUG \
+            -d DRM_SDE_EVTLOG_DEBUG
+
+          make "${COMMON_ARGS[@]}" olddefconfig
+
+          echo "=== Verified Key .config Options ==="
+          grep -E "CONFIG_(KSU|KSU_MANUAL_HOOK|KSU_SUSFS|SCHED_CASS|CPU_BOOST|LRU_GEN|ZRAM_DEF_COMP_LZ4|HZ|DEFAULT_BBR|LTO_CLANG|THINLTO|AUDIT|SLUB_DEBUG|FTRACE|KPROBES)" out/.config || true
+
+      - name: Compile Kernel, DTBs & DTBOs
+        run: |
+          OPT_FLAGS="-O3 -mcpu=cortex-a76.cortex-a55 -mtune=cortex-a76.cortex-a55 -Wno-error"
+
+          make -j"$(nproc --all)" \
+            O=out \
+            ARCH=arm64 \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            CC=clang \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            KCFLAGS="${OPT_FLAGS}" \
+            CFLAGS_KERNEL="-Wno-error" \
+            CFLAGS_MODULE="-Wno-error" \
+            dtbs Image.gz
+
+          # Concatenate Image.gz + compiled sdmmagpie base DTB(s) into Image.gz-dtb
+          DTB_FILES=$(find out/arch/arm64/boot/dts -type f -name "*.dtb" | sort)
+          if [ -z "$DTB_FILES" ]; then
+            echo "ERROR: No .dtb files generated!"
+            exit 1
+          fi
+          cat out/arch/arm64/boot/Image.gz $DTB_FILES > out/arch/arm64/boot/Image.gz-dtb
+          ls -lh out/arch/arm64/boot/Image.gz-dtb
+
+          # Build dtbo.img from davinci DTBO overlays using LineageOS mkdtboimg.py
+          curl -fLSs "https://raw.githubusercontent.com/LineageOS/android_system_libufdt/lineage-23.2/utils/src/mkdtboimg.py" \
+            -o /tmp/mkdtboimg.py
+          DTBO_FILES=$(find out/arch/arm64/boot/dts -type f -name "*.dtbo" | sort)
+          if [ -z "$DTBO_FILES" ]; then
+            echo "ERROR: No .dtbo files generated!"
+            exit 1
+          fi
+          echo "Packing DTBO files: $DTBO_FILES"
+          python3 /tmp/mkdtboimg.py create out/arch/arm64/boot/dtbo.img --page_size=4096 $DTBO_FILES
+          ls -lh out/arch/arm64/boot/dtbo.img
+
+      - name: Package Flashable Zip with AnyKernel3
+        run: |
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
+          rm -rf AnyKernel3/.git AnyKernel3/modules AnyKernel3/patch AnyKernel3/ramdisk
+
+          cat << 'EOF' > AnyKernel3/anykernel.sh
+          ### AnyKernel3 Ramdisk Mod Script
+          ## osm0sis @ xda-developers
+
+          ### AnyKernel setup
+          properties() { '
+          kernel.string=Davinci LOS-23.2 825MHz SukiSU-Ultra + SUSFS Kernel
+          do.devicecheck=1
+          do.modules=0
+          do.systemless=1
+          do.cleanup=1
+          do.cleanuponabort=0
+          device.name1=davinci
+          device.name2=davinciin
+          device.name3=
+          device.name4=
+          device.name5=
+          supported.versions=
+          supported.patchlevels=
+          supported.vendorpatchlevels=
+          '; } # end properties
+
+          ### AnyKernel install
+          BLOCK=/dev/block/bootdevice/by-name/boot;
+          IS_SLOT_DEVICE=0;
+          RAMDISK_COMPRESSION=auto;
+          PATCH_VBMETA_FLAG=auto;
+
+          # import functions/variables and setup patching - see for reference (DO NOT REMOVE)
+          . tools/ak3-core.sh;
+
+          # boot & dtbo install (split_boot/flash_boot preserves Android 16 boot ramdisk intact)
+          split_boot;
+          flash_boot;
+          flash_generic dtbo;
+          ## end boot install
+          EOF
+
+          cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
+          cp out/arch/arm64/boot/dtbo.img AnyKernel3/
+
+          cd AnyKernel3
+          zip -r9 "$GITHUB_WORKSPACE/Davinci-LOS23.2-825MHz-SukiSU-SUSFS.zip" . -x "README.md" ".gitignore"
+          ls -lh "$GITHUB_WORKSPACE/Davinci-LOS23.2-825MHz-SukiSU-SUSFS.zip"
+
+      - name: Upload AnyKernel3 Flashable Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Davinci-LOS23.2-825MHz-SukiSU-SUSFS
+          path: Davinci-LOS23.2-825MHz-SukiSU-SUSFS.zip
+          if-no-files-found: error
+          retention-days: 30
