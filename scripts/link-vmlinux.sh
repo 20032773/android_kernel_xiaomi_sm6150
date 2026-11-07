@@ -63,8 +63,9 @@ archive_builtin()
 
 	if [ -n "${CONFIG_LTO_CLANG}" ]; then
 		mv -f built-in.a built-in.a.tmp
-		${LLVM_AR} rcsT${KBUILD_ARFLAGS} built-in.a $(${AR} t built-in.a.tmp)
-		rm -f built-in.a.tmp
+		${AR} t built-in.a.tmp > .tmp_builtin.rsp
+		${LLVM_AR} rcsT${KBUILD_ARFLAGS} built-in.a @.tmp_builtin.rsp
+		rm -f built-in.a.tmp .tmp_builtin.rsp
 	fi
 }
 
