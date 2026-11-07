@@ -47,9 +47,12 @@ struct dev_data {
 	int cur_ab;
 	int cur_ib;
 	long gov_ab;
+	unsigned long boost_ib;
 	struct devfreq *df;
 	struct devfreq_dev_profile dp;
 };
+
+static struct dev_data *cpubw_ddr_data;
 
 static int set_bw(struct device *dev, int new_ib, int new_ab)
 {
@@ -84,6 +87,9 @@ static int devbw_target(struct device *dev, unsigned long *freq, u32 flags)
 {
 	struct dev_data *d = dev_get_drvdata(dev);
 	struct dev_pm_opp *opp;
+
+	if (d->boost_ib > *freq)
+		*freq = d->boost_ib;
 
 	opp = devfreq_recommended_opp(dev, freq, flags);
 	if (!IS_ERR(opp))
@@ -237,12 +243,35 @@ int devfreq_add_devbw(struct device *dev)
 		return PTR_ERR(d->df);
 	}
 
+	if (dev->of_node &&
+	    (!of_node_cmp(dev->of_node->name, "qcom,cpu-llcc-ddr-bw") ||
+	     !of_node_cmp(dev->of_node->name, "qcom,cpubw")))
+		cpubw_ddr_data = d;
+
 	return 0;
 }
+
+void devbw_wake_input_boost(bool boost)
+{
+	struct dev_data *d = READ_ONCE(cpubw_ddr_data);
+
+	if (!d || IS_ERR_OR_NULL(d->df))
+		return;
+
+	mutex_lock(&d->df->lock);
+	/* 3879 MB/s corresponds to 1017 MHz LPDDR4X OPP on sdmmagpie */
+	d->boost_ib = boost ? 3879UL : 0UL;
+	update_devfreq(d->df);
+	mutex_unlock(&d->df->lock);
+}
+EXPORT_SYMBOL(devbw_wake_input_boost);
 
 int devfreq_remove_devbw(struct device *dev)
 {
 	struct dev_data *d = dev_get_drvdata(dev);
+
+	if (cpubw_ddr_data == d)
+		WRITE_ONCE(cpubw_ddr_data, NULL);
 
 	msm_bus_scale_unregister_client(d->bus_client);
 	devfreq_remove_device(d->df);

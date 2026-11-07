@@ -567,3 +567,9 @@ And public attribution of xiaomi platforms(like F3 and so and)
 		label = "right";
 	};
 };
+
+/* Unlock Adreno 618 S730G factory 825MHz/750MHz & 64ms idle timeout */
+&msm_gpu {
+	/delete-property/ qcom,gpu-speed-bin;
+	qcom,idle-timeout = <64>;
+};

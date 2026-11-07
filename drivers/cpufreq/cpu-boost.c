@@ -34,10 +34,16 @@ static struct workqueue_struct *cpu_boost_wq;
 
 static struct work_struct input_boost_work;
 
-static bool input_boost_enabled;
+static bool input_boost_enabled = true;
 
-static unsigned int input_boost_ms = 40;
+static unsigned int input_boost_ms = 64;
 module_param(input_boost_ms, uint, 0644);
+
+#ifdef CONFIG_QCOM_DEVFREQ_DEVBW
+extern void devbw_wake_input_boost(bool boost);
+#else
+static inline void devbw_wake_input_boost(bool boost) {}
+#endif
 
 static unsigned int sched_boost_on_input;
 module_param(sched_boost_on_input, uint, 0644);
@@ -178,6 +184,7 @@ static void do_input_boost_rem(struct work_struct *work)
 
 	/* Update policies for all online CPUs */
 	update_policy_online();
+	devbw_wake_input_boost(false);
 
 	if (sched_boost_active) {
 		ret = sched_set_boost(0);
@@ -207,6 +214,7 @@ static void do_input_boost(struct work_struct *work)
 
 	/* Update policies for all online CPUs */
 	update_policy_online();
+	devbw_wake_input_boost(true);
 
 	/* Enable scheduler boost to migrate tasks to big cluster */
 	if (sched_boost_on_input > 0) {
@@ -326,6 +334,8 @@ static int cpu_boost_init(void)
 	for_each_possible_cpu(cpu) {
 		s = &per_cpu(sync_info, cpu);
 		s->cpu = cpu;
+		/* Kryo 470: Little (CPU0-5) 1.61GHz, Big (CPU6-7) 1.84GHz */
+		s->input_boost_freq = (cpu < 6) ? 1612800U : 1843200U;
 	}
 	cpufreq_register_notifier(&boost_adjust_nb, CPUFREQ_POLICY_NOTIFIER);
 

@@ -2992,8 +2992,9 @@
 		qcom,core-dev-table =
 			<  768000 MHZ_TO_MBPS( 300, 4) >,
 			< 1248000 MHZ_TO_MBPS( 451, 4) >,
-			< 1497000 MHZ_TO_MBPS( 547, 4) >,
-			< 1804800 MHZ_TO_MBPS( 768,4) >;
+			< 1497600 MHZ_TO_MBPS( 547, 4) >,
+			< 1612800 MHZ_TO_MBPS( 768, 4) >,
+			< 1804800 MHZ_TO_MBPS(1017, 4) >;
 	};
 
 	cpu6_cpu_ddr_latfloor: qcom,cpu6-cpu-ddr-latfloor {
@@ -3010,10 +3011,10 @@
 		qcom,cpulist = <&CPU6 &CPU7>;
 		qcom,target-dev = <&cpu6_cpu_ddr_latfloor>;
 		qcom,core-dev-table =
-			< 1094000 MHZ_TO_MBPS( 300, 4) >,
-			< 1324000 MHZ_TO_MBPS( 547, 4) >,
-			< 1552200 MHZ_TO_MBPS( 768, 4) >,
-			< 1708000 MHZ_TO_MBPS(1017, 4) >,
+			< 1094400 MHZ_TO_MBPS( 300, 4) >,
+			< 1324800 MHZ_TO_MBPS( 547, 4) >,
+			< 1555200 MHZ_TO_MBPS( 768, 4) >,
+			< 1843200 MHZ_TO_MBPS(1353, 4) >,
 			< 2438400 MHZ_TO_MBPS(1804, 4) >;
 	};
 
