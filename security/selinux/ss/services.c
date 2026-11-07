@@ -3305,6 +3305,7 @@ int security_policycap_supported(struct selinux_state *state,
 	return rc;
 }
 
+#ifdef CONFIG_AUDIT
 struct selinux_audit_rule {
 	u32 au_seqno;
 	struct context au_ctxt;
@@ -3575,6 +3576,7 @@ static int __init aurule_init(void)
 	return err;
 }
 __initcall(aurule_init);
+#endif /* CONFIG_AUDIT */
 
 #ifdef CONFIG_NETLABEL
 /**
