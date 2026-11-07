@@ -89,11 +89,20 @@ bool memmap_valid_within(unsigned long pfn,
 void lruvec_init(struct lruvec *lruvec)
 {
 	enum lru_list lru;
+#ifdef CONFIG_LRU_GEN
+	int i;
+#endif
 
 	memset(lruvec, 0, sizeof(struct lruvec));
 
 	for_each_lru(lru)
 		INIT_LIST_HEAD(&lruvec->lists[lru]);
+
+#ifdef CONFIG_LRU_GEN
+	lruvec->lrugen.max_seq = MIN_NR_GENS - 1;
+	for (i = 0; i < MAX_NR_GENS; i++)
+		lruvec->lrugen.timestamps[i] = jiffies;
+#endif
 }
 
 #if defined(CONFIG_NUMA_BALANCING) && !defined(LAST_CPUPID_NOT_IN_PAGE_FLAGS)

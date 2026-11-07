@@ -987,6 +987,16 @@ config SCHED_CORE_CTL
 
 	  If unsure, say N here.
 
+config SCHED_CASS
+	bool "Capacity Aware Superset Scheduler (CASS)"
+	depends on SMP
+	default y
+	help
+	  This selects Sultan's Capacity Aware Superset Scheduler (CASS) for
+	  heterogeneous big.LITTLE / DynamIQ SMP task placement. CASS treats
+	  all eligible CPUs across clusters as a capacity-normalized superset
+	  to improve frame pacing and energy efficiency.
+
 menuconfig NAMESPACES
 	bool "Namespaces support" if EXPERT
 	depends on MULTIUSER

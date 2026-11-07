@@ -50,6 +50,12 @@
 #include <linux/printk.h>
 #include <linux/dax.h>
 #include <linux/psi.h>
+#ifdef CONFIG_LRU_GEN
+#include <linux/ctype.h>
+#include <linux/jiffies.h>
+#include <linux/kobject.h>
+#include <linux/sysfs.h>
+#endif
 
 #include <asm/tlbflush.h>
 #include <asm/div64.h>
@@ -859,6 +865,84 @@ redo:
 	put_page(page);		/* drop ref from isolate */
 }
 
+#ifdef CONFIG_LRU_GEN
+#ifdef CONFIG_LRU_GEN_ENABLED
+static unsigned int __read_mostly lru_gen_caps = BIT(NR_LRU_GEN_CAPS) - 1;
+#else
+static unsigned int __read_mostly lru_gen_caps;
+#endif
+
+/* Working-set minimum time-to-live (ms) to prevent ZRAM/UFS thrashing */
+static unsigned long __read_mostly lru_gen_min_ttl = HZ;
+
+static inline bool lru_gen_enabled(void)
+{
+	return READ_ONCE(lru_gen_caps) & LRU_GEN_CORE;
+}
+
+static inline bool lru_gen_has_cap(unsigned int cap)
+{
+	return (READ_ONCE(lru_gen_caps) & (LRU_GEN_CORE | cap)) ==
+	       (LRU_GEN_CORE | cap);
+}
+
+static inline int lru_gen_from_seq(unsigned long seq)
+{
+	return seq % MAX_NR_GENS;
+}
+
+static void lru_gen_age_lruvec(struct lruvec *lruvec,
+			       struct scan_control *sc __maybe_unused)
+{
+	struct lru_gen_mm_state *lrugen = &lruvec->lrugen;
+	unsigned long now = jiffies;
+	int gen = lru_gen_from_seq(lrugen->max_seq);
+	int swappiness = mem_cgroup_swappiness(lruvec_memcg(lruvec));
+	int type;
+
+	/* Advance generation ring once current youngest slot ages >= 250ms */
+	if (time_after_eq(now, lrugen->timestamps[gen] + (HZ / 4))) {
+		unsigned long next_seq = lrugen->max_seq + 1;
+		int next_gen = lru_gen_from_seq(next_seq);
+
+		lrugen->max_seq = next_seq;
+		lrugen->timestamps[next_gen] = now;
+
+		for (type = 0; type < 2; type++) {
+			if (type == 0 && !swappiness)
+				continue;
+			if (next_seq - lrugen->min_seq[type] >= MAX_NR_GENS)
+				lrugen->min_seq[type] = next_seq - (MAX_NR_GENS - 1);
+		}
+	}
+}
+
+static bool lru_gen_should_abort_young(struct lruvec *lruvec,
+				       struct scan_control *sc)
+{
+	unsigned long min_ttl = READ_ONCE(lru_gen_min_ttl);
+	unsigned long oldest_seq;
+	unsigned long birth;
+
+	if (!min_ttl || sc->priority <= 2 || !current_is_kswapd())
+		return false;
+
+	oldest_seq = min(lruvec->lrugen.min_seq[0], lruvec->lrugen.min_seq[1]);
+	birth = lruvec->lrugen.timestamps[lru_gen_from_seq(oldest_seq)];
+
+	return time_is_after_jiffies(birth + min_ttl);
+}
+#else /* !CONFIG_LRU_GEN */
+static inline bool lru_gen_enabled(void)
+{
+	return false;
+}
+static inline bool lru_gen_has_cap(unsigned int cap)
+{
+	return false;
+}
+#endif /* CONFIG_LRU_GEN */
+
 enum page_references {
 	PAGEREF_RECLAIM,
 	PAGEREF_RECLAIM_CLEAN,
@@ -882,6 +966,18 @@ static enum page_references page_check_references(struct page *page,
 	 */
 	if (vm_flags & VM_LOCKED)
 		return PAGEREF_RECLAIM;
+
+#ifdef CONFIG_LRU_GEN
+	if (lru_gen_has_cap(LRU_GEN_MM_WALK) && referenced_ptes) {
+		if (PageSwapBacked(page) || (vm_flags & VM_EXEC) ||
+		    referenced_ptes > 1 || referenced_page ||
+		    PageWorkingset(page))
+			return PAGEREF_ACTIVATE;
+
+		SetPageReferenced(page);
+		return PAGEREF_KEEP;
+	}
+#endif
 
 	if (referenced_ptes) {
 		if (PageSwapBacked(page))
@@ -1914,6 +2010,16 @@ shrink_inactive_list(unsigned long nr_to_scan, struct lruvec *lruvec,
 
 	putback_inactive_pages(lruvec, &page_list);
 
+#ifdef CONFIG_LRU_GEN
+	if (lru_gen_enabled()) {
+		lruvec->lrugen.evicted[file] += nr_reclaimed;
+		lruvec->lrugen.protected[file] += stat.nr_activate + stat.nr_ref_keep;
+		if (nr_reclaimed >= (SWAP_CLUSTER_MAX >> 1) &&
+		    lruvec->lrugen.min_seq[file] < lruvec->lrugen.max_seq)
+			lruvec->lrugen.min_seq[file]++;
+	}
+#endif
+
 	__mod_node_page_state(pgdat, NR_ISOLATED_ANON + file, -nr_taken);
 
 	spin_unlock_irq(&pgdat->lru_lock);
@@ -2415,6 +2521,39 @@ static void get_scan_count(struct lruvec *lruvec, struct mem_cgroup *memcg,
 
 	fp = file_prio * (reclaim_stat->recent_scanned[1] + 1);
 	fp /= reclaim_stat->recent_rotated[1] + 1;
+
+#ifdef CONFIG_LRU_GEN
+	if (lru_gen_enabled()) {
+		struct lru_gen_mm_state *lrugen = &lruvec->lrugen;
+		unsigned long refaults = lruvec_page_state(lruvec, WORKINGSET_ACTIVATE);
+		unsigned long file_refault_delta = 0;
+		unsigned long anon_cost, file_cost;
+
+		if (refaults >= lrugen->refaulted[1])
+			file_refault_delta = refaults - lrugen->refaulted[1];
+		lrugen->refaulted[1] = refaults;
+
+		/*
+		 * MGLRU PID-inspired cost model: weigh eviction yield vs
+		 * protected/refaulted pages so executable/UI file cache on
+		 * UFS 2.1 is not thrashed when fast LZ4 ZRAM swap is available.
+		 */
+		anon_cost = lrugen->protected[0] + 1;
+		file_cost = lrugen->protected[1] + (file_refault_delta * 2) + 1;
+
+		if (unlikely(lrugen->evicted[0] + lrugen->evicted[1] > (anon + file) / 2)) {
+			lrugen->evicted[0] >>= 1;
+			lrugen->evicted[1] >>= 1;
+			lrugen->protected[0] >>= 1;
+			lrugen->protected[1] >>= 1;
+		}
+
+		ap = div64_u64((u64)anon_prio * (lrugen->evicted[0] + SWAP_CLUSTER_MAX),
+			       anon_cost);
+		fp = div64_u64((u64)file_prio * (lrugen->evicted[1] + SWAP_CLUSTER_MAX),
+			       file_cost);
+	}
+#endif
 	spin_unlock_irq(&pgdat->lru_lock);
 
 	fraction[0] = ap;
@@ -2486,6 +2625,20 @@ static void shrink_node_memcg(struct pglist_data *pgdat, struct mem_cgroup *memc
 	unsigned long nr_to_reclaim = sc->nr_to_reclaim;
 	struct blk_plug plug;
 	bool scan_adjusted;
+
+#ifdef CONFIG_LRU_GEN
+	if (lru_gen_enabled()) {
+		spin_lock_irq(&pgdat->lru_lock);
+		lru_gen_age_lruvec(lruvec, sc);
+		spin_unlock_irq(&pgdat->lru_lock);
+
+		if (lru_gen_has_cap(LRU_GEN_NONLEAF_YOUNG) &&
+		    lru_gen_should_abort_young(lruvec, sc)) {
+			*lru_pages = 0;
+			return;
+		}
+	}
+#endif
 
 	get_scan_count(lruvec, memcg, sc, nr, lru_pages);
 
@@ -4121,3 +4274,70 @@ void check_move_unevictable_pages(struct page **pages, int nr_pages)
 	}
 }
 #endif /* CONFIG_SHMEM */
+
+#ifdef CONFIG_LRU_GEN
+static ssize_t enabled_show(struct kobject *kobj, struct kobj_attribute *attr,
+			    char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "0x%04x\n", READ_ONCE(lru_gen_caps));
+}
+
+static ssize_t enabled_store(struct kobject *kobj, struct kobj_attribute *attr,
+			     const char *buf, size_t len)
+{
+	unsigned int caps;
+
+	if (tolower(*buf) == 'n')
+		caps = 0;
+	else if (tolower(*buf) == 'y')
+		caps = BIT(NR_LRU_GEN_CAPS) - 1;
+	else if (kstrtouint(buf, 0, &caps))
+		return -EINVAL;
+
+	WRITE_ONCE(lru_gen_caps, caps & (BIT(NR_LRU_GEN_CAPS) - 1));
+	return len;
+}
+
+static ssize_t min_ttl_ms_show(struct kobject *kobj,
+			       struct kobj_attribute *attr, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%u\n",
+			jiffies_to_msecs(READ_ONCE(lru_gen_min_ttl)));
+}
+
+static ssize_t min_ttl_ms_store(struct kobject *kobj,
+				struct kobj_attribute *attr,
+				const char *buf, size_t len)
+{
+	unsigned int msecs;
+
+	if (kstrtouint(buf, 0, &msecs))
+		return -EINVAL;
+
+	WRITE_ONCE(lru_gen_min_ttl, msecs_to_jiffies(msecs));
+	return len;
+}
+
+static struct kobj_attribute lru_gen_enabled_attr = __ATTR_RW(enabled);
+static struct kobj_attribute lru_gen_min_ttl_attr = __ATTR_RW(min_ttl_ms);
+
+static struct attribute *lru_gen_attrs[] = {
+	&lru_gen_enabled_attr.attr,
+	&lru_gen_min_ttl_attr.attr,
+	NULL,
+};
+
+static const struct attribute_group lru_gen_attr_group = {
+	.name = "lru_gen",
+	.attrs = lru_gen_attrs,
+};
+
+static int __init init_lru_gen(void)
+{
+	if (mm_kobj && sysfs_create_group(mm_kobj, &lru_gen_attr_group))
+		pr_err("lru_gen: failed to create /sys/kernel/mm/lru_gen\n");
+
+	return 0;
+}
+subsys_initcall(init_lru_gen);
+#endif /* CONFIG_LRU_GEN */

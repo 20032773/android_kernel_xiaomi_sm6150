@@ -240,6 +240,29 @@ struct zone_reclaim_stat {
 	unsigned long		recent_scanned[2];
 };
 
+#ifdef CONFIG_LRU_GEN
+#define MAX_NR_GENS		4U
+#define MIN_NR_GENS		2U
+
+#define LRU_GEN_CORE		BIT(0)
+#define LRU_GEN_MM_WALK		BIT(1)
+#define LRU_GEN_NONLEAF_YOUNG	BIT(2)
+#define NR_LRU_GEN_CAPS		3
+
+struct lru_gen_mm_state {
+	/* Aging generation sequence counter */
+	unsigned long max_seq;
+	/* Oldest generation sequence per type (0 = anon, 1 = file) */
+	unsigned long min_seq[2];
+	/* Birth jiffies of each generation slot */
+	unsigned long timestamps[MAX_NR_GENS];
+	/* Cumulative evicted and refault/protected counters for PID balancing */
+	unsigned long evicted[2];
+	unsigned long refaulted[2];
+	unsigned long protected[2];
+};
+#endif
+
 struct lruvec {
 	struct list_head		lists[NR_LRU_LISTS];
 	struct zone_reclaim_stat	reclaim_stat;
@@ -247,6 +270,9 @@ struct lruvec {
 	atomic_long_t			inactive_age;
 	/* Refaults at the time of last reclaim cycle */
 	unsigned long			refaults;
+#ifdef CONFIG_LRU_GEN
+	struct lru_gen_mm_state		lrugen;
+#endif
 #ifdef CONFIG_MEMCG
 	struct pglist_data *pgdat;
 #endif

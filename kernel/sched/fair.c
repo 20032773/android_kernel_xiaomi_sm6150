@@ -8425,6 +8425,11 @@ static inline int wake_energy(struct task_struct *p, int prev_cpu,
 	return true;
 }
 
+#ifdef CONFIG_SCHED_CASS
+#include "cass.c"
+static bool __read_mostly sched_cass_enabled = true;
+#endif
+
 /*
  * select_task_rq_fair: Select target runqueue for the waking task in domains
  * that have the 'sd_flag' flag set. In practice, this is SD_BALANCE_WAKE,
@@ -8448,6 +8453,12 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 	int want_affine = 0;
 	int want_energy = 0;
 	int sync = wake_flags & WF_SYNC;
+
+#ifdef CONFIG_SCHED_CASS
+	if (likely(sched_cass_enabled))
+		return cass_select_task_rq_fair(p, prev_cpu, sd_flag, wake_flags,
+						sibling_count_hint);
+#endif
 
 	rcu_read_lock();
 

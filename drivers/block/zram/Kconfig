@@ -3,6 +3,7 @@ config ZRAM
 	tristate "Compressed RAM block device support"
 	depends on BLOCK && SYSFS && ZSMALLOC && CRYPTO
 	select CRYPTO_LZO
+	select CRYPTO_LZ4
 	default n
 	help
 	  Creates virtual block devices called /dev/zramX (X = 0, 1, ...).
@@ -14,6 +15,16 @@ config ZRAM
 	  disks and maybe many more.
 
 	  See Documentation/blockdev/zram.txt for more information.
+
+config ZRAM_DEF_COMP_LZ4
+	bool "Default to LZ4 compression algorithm for ZRAM"
+	depends on ZRAM
+	select CRYPTO_LZ4
+	default y
+	help
+	  Use LZ4 instead of LZO as the default ZRAM compression algorithm
+	  for significantly higher decompression throughput and lower swap
+	  latency on heterogeneous ARM64 mobile SoCs.
 
 config ZRAM_WRITEBACK
        bool "Write back incompressible or idle page to backing device"

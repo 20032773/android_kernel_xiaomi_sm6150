@@ -829,3 +829,22 @@ config FORCE_ALLOC_FROM_DMA_ZONE
 	  always using ZONE_DMA memory.
 
 	  If unsure, say "n".
+
+# multi-gen LRU {
+config LRU_GEN
+	bool "Multi-Gen LRU"
+	depends on MMU
+	default y
+	help
+	  A high performance Multi-Gen LRU implementation that overhauls
+	  page aging, working-set protection (min_ttl_ms), and refault-aware
+	  PID scan balancing between anonymous ZRAM swap and file page cache.
+
+config LRU_GEN_ENABLED
+	bool "Turn on Multi-Gen LRU by default"
+	depends on LRU_GEN
+	default y
+	help
+	  This option turns on Multi-Gen LRU by default without requiring a
+	  userspace write to /sys/kernel/mm/lru_gen/enabled.
+# }
