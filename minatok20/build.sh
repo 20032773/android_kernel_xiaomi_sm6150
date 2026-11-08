@@ -75,7 +75,13 @@ MAKE_ARGS=(
 )
 
 mkdir -p "$OUT"
-make "${MAKE_ARGS[@]}" vendor/sdmsteppe-perf_defconfig vendor/davinci.config vendor/minatok20.config
+DEFCONFIGS="vendor/sdmsteppe-perf_defconfig vendor/davinci.config vendor/minatok20.config"
+# The SUSFS feature flags live in a fragment so the exact feature set is
+# pinned (and sus_kstat/sus_map/open_redirect stay off on 4.14).
+if [ "$KSU" = "true" ] && [ "$SUSFS" = "true" ]; then
+	DEFCONFIGS="$DEFCONFIGS vendor/minatok20_susfs.config"
+fi
+make "${MAKE_ARGS[@]}" $DEFCONFIGS
 
 CFG="$ROOT/scripts/config --file $OUT/.config"
 if [ "$KSU" = "true" ]; then
