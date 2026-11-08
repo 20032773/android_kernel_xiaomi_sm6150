@@ -98,6 +98,11 @@ extern struct cpumask __cpu_isolated_mask;
 #define cpu_active_mask   ((const struct cpumask *)&__cpu_active_mask)
 #define cpu_isolated_mask ((const struct cpumask *)&__cpu_isolated_mask)
 
+#if defined(CONFIG_LITTLE_CPU_MASK) || defined(CONFIG_BIG_CPU_MASK)
+extern const struct cpumask *const cpu_lp_mask;
+extern const struct cpumask *const cpu_perf_mask;
+#endif
+
 #if NR_CPUS > 1
 #define num_online_cpus()	cpumask_weight(cpu_online_mask)
 #define num_possible_cpus()	cpumask_weight(cpu_possible_mask)

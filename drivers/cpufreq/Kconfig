@@ -401,4 +401,58 @@ config QORIQ_CPUFREQ
 	  which are capable of changing the CPU's frequency dynamically.
 
 endif
+
+config LITTLE_CPU_MASK
+	int "CPU mask for the little (low-power) cluster"
+	default 0
+	help
+	  Bitmask of CPUs in the little cluster (e.g. 63 = CPUs 0-5 for davinci).
+	  0 falls back to cpu_possible_mask.
+
+config BIG_CPU_MASK
+	int "CPU mask for the big (performance) cluster"
+	default 0
+	help
+	  Bitmask of CPUs in the big cluster (e.g. 192 = CPUs 6-7 for davinci).
+	  0 falls back to cpu_possible_mask.
+
+config CPU_INPUT_BOOST
+	bool "CPU Input Boost"
+	help
+	  Boosts the CPU on touchscreen input and on display wake, up to each
+	  cluster's stock maximum frequency (clamped to policy->max, so it never
+	  overclocks). Boost frequencies set above the stock max are clamped.
+
+if CPU_INPUT_BOOST
+
+config WAKE_BOOST_DURATION_MS
+	int "Wake boost duration"
+	default "1000"
+
+config MAX_BOOST_FREQ_LP
+	int "Low-power cluster max-boost freq"
+	default "0"
+
+config MAX_BOOST_FREQ_PERF
+	int "Performance cluster max-boost freq"
+	default "0"
+
+config MIN_FREQ_LP
+	int "LP cluster min boost to set after boost"
+	default "0"
+
+config MIN_FREQ_PERF
+	int "HP cluster min boost to set after boost"
+	default "0"
+
+config IDLE_MIN_FREQ_LP
+	int "Low-power cluster idle frequency"
+	default "0"
+
+config IDLE_MIN_FREQ_PERF
+	int "High-power cluster idle frequency"
+	default "0"
+
+endif
+
 endmenu
