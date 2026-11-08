@@ -39,12 +39,43 @@
 #include <linux/bitops.h>
 #include <linux/init_task.h>
 #include <linux/uaccess.h>
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+#include <linux/susfs_def.h>
+#endif
 
 #include "internal.h"
 #include "mount.h"
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/namei.h>
+
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+extern bool susfs_is_inode_sus_path(struct inode *inode);
+
+/*
+ * Return the error that a lookup of a sus path should present to the caller:
+ * the real permission error if the caller lacks access to the parent, else
+ * -ENOENT so the path simply looks absent. Based on devnoname120's kernel-4.14
+ * susfs backport.
+ */
+static inline int susfs_inode_permission(struct inode *inode, unsigned int flags)
+{
+	int mask = MAY_EXEC;
+	int error;
+
+	if (flags & (LOOKUP_CREATE | LOOKUP_EXCL))
+		mask |= MAY_WRITE;
+	if (flags & LOOKUP_OPEN)
+		mask |= MAY_OPEN;
+	if (flags & LOOKUP_RCU)
+		mask |= MAY_NOT_BLOCK;
+
+	error = inode_permission(inode, mask);
+	if (error)
+		return error;
+	return -ENOENT;
+}
+#endif
 
 /* [Feb-1997 T. Schoebel-Theuer]
  * Fundamental changes in the pathname lookup mechanisms (namei)
@@ -1656,6 +1687,11 @@ static struct dentry *lookup_real(struct inode *dir, struct dentry *dentry,
 		dput(dentry);
 		dentry = old;
 	}
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+	if (dentry && !IS_ERR(dentry) && dentry->d_inode &&
+	    susfs_is_inode_sus_path(dentry->d_inode))
+		return ERR_PTR(susfs_inode_permission(dir, flags));
+#endif
 	return dentry;
 }
 
@@ -1664,8 +1700,14 @@ static struct dentry *__lookup_hash(const struct qstr *name,
 {
 	struct dentry *dentry = lookup_dcache(name, base, flags);
 
-	if (dentry)
+	if (dentry) {
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+		if (!IS_ERR(dentry) && dentry->d_inode &&
+		    susfs_is_inode_sus_path(dentry->d_inode))
+			return ERR_PTR(susfs_inode_permission(base->d_inode, flags));
+#endif
 		return dentry;
+	}
 
 	dentry = d_alloc(base, name);
 	if (unlikely(!dentry))
@@ -2192,10 +2234,25 @@ static int link_path_walk(const char *name, struct nameidata *nd)
 	for(;;) {
 		u64 hash_len;
 		int type;
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+		struct dentry *dentry;
+#endif
 
 		err = may_lookup(nd);
 		if (err)
 			return err;
+
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+		dentry = nd->path.dentry;
+		if (dentry->d_inode &&
+		    susfs_is_inode_sus_path(dentry->d_inode)) {
+			err = susfs_inode_permission(dentry->d_parent->d_inode,
+						     nd->flags);
+			if (err)
+				return err;
+			return -ENOENT;
+		}
+#endif
 
 		hash_len = hash_name(nd->path.dentry, name);
 
@@ -2446,6 +2503,20 @@ static int path_lookupat(struct nameidata *nd, unsigned flags, struct path *path
 			break;
 		}
 	}
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+	{
+		struct dentry *dentry = nd->path.dentry;
+
+		if (!err && dentry && !IS_ERR(dentry) && dentry->d_inode &&
+		    susfs_is_inode_sus_path(dentry->d_inode)) {
+			err = susfs_inode_permission(dentry->d_parent->d_inode,
+						     nd->flags);
+			if (!err)
+				err = -ENOENT;
+			goto susfs_out;
+		}
+	}
+#endif
 	if (!err)
 		err = complete_walk(nd);
 
@@ -2457,6 +2528,9 @@ static int path_lookupat(struct nameidata *nd, unsigned flags, struct path *path
 		nd->path.mnt = NULL;
 		nd->path.dentry = NULL;
 	}
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+susfs_out:
+#endif
 	terminate_walk(nd);
 	return err;
 }
@@ -3308,6 +3382,15 @@ static int lookup_open(struct nameidata *nd, struct path *path,
 		dentry = NULL;
 	}
 	if (dentry->d_inode) {
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+		if (susfs_is_inode_sus_path(dentry->d_inode)) {
+			error = susfs_inode_permission(dir_inode, nd->flags);
+			dput(dentry);
+			if (error)
+				return error;
+			return -ENOENT;
+		}
+#endif
 		/* Cached positive dentry: will open in f_op->open */
 		goto out_no_open;
 	}
@@ -3416,6 +3499,9 @@ static int do_last(struct nameidata *nd,
 	struct inode *inode;
 	struct path path;
 	int error;
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+	struct dentry *susfs_dentry;
+#endif
 
 	nd->flags &= ~LOOKUP_PARENT;
 	nd->flags |= op->intent;
@@ -3426,6 +3512,15 @@ static int do_last(struct nameidata *nd,
 			return error;
 		goto finish_open;
 	}
+
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+	if (dir->d_inode && susfs_is_inode_sus_path(dir->d_inode)) {
+		error = susfs_inode_permission(dir->d_parent->d_inode, nd->flags);
+		if (error)
+			return error;
+		return -ENOENT;
+	}
+#endif
 
 	if (!(open_flag & O_CREAT)) {
 		if (nd->last.name[nd->last.len])
@@ -3533,6 +3628,17 @@ finish_lookup:
 	error = step_into(nd, &path, 0, inode, seq);
 	if (unlikely(error))
 		return error;
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+	susfs_dentry = nd->path.dentry;
+	if (susfs_dentry && !IS_ERR(susfs_dentry) && susfs_dentry->d_inode &&
+	    susfs_is_inode_sus_path(susfs_dentry->d_inode)) {
+		error = susfs_inode_permission(susfs_dentry->d_parent->d_inode,
+					       nd->flags);
+		if (error)
+			return error;
+		return -ENOENT;
+	}
+#endif
 finish_open:
 	/* Why this, you ask?  _Now_ we might have grown LOOKUP_JUMPED... */
 	error = complete_walk(nd);
