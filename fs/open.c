@@ -33,6 +33,9 @@
 #include <linux/compat.h>
 
 #include "internal.h"
+#ifdef CONFIG_KSU_SUSFS
+#include <linux/susfs_def.h>
+#endif
 
 int do_truncate2(struct vfsmount *mnt, struct dentry *dentry, loff_t length,
 		unsigned int time_attrs, struct file *filp)
@@ -359,6 +362,12 @@ __attribute__((hot))
 extern int ksu_handle_faccessat(int *dfd, const char __user **filename_user,
 				int *mode, int *flags);
 #endif
+#ifdef CONFIG_KSU_SUSFS
+extern struct static_key_true ksu_su_compat_enabled;
+extern bool __ksu_is_allow_uid_for_current(uid_t uid);
+extern int ksu_handle_faccessat(int *dfd, struct filename **filename,
+				int *mode, int *__unused_flags);
+#endif
 
 /*
  * access() needs to use the real uid/gid, not the effective uid/gid.
@@ -420,7 +429,23 @@ SYSCALL_DEFINE3(faccessat, int, dfd, const char __user *, filename, int, mode)
 
 	old_cred = override_creds(override_cred);
 retry:
+#ifdef CONFIG_KSU_SUSFS
+	{
+		struct filename *fname = getname_flags(filename, lookup_flags, NULL);
+
+		if (likely(susfs_is_current_proc_no_su()))
+			goto susfs_orig_flow;
+		if (static_branch_likely(&ksu_su_compat_enabled)) {
+			if (unlikely(__ksu_is_allow_uid_for_current(current_uid().val)))
+				ksu_handle_faccessat(&dfd, &fname, &mode, NULL);
+		}
+susfs_orig_flow:
+		res = filename_lookup(dfd, fname, lookup_flags, &path, NULL);
+		/* filename_lookup() consumes fname */
+	}
+#else
 	res = user_path_at(dfd, filename, lookup_flags, &path);
+#endif
 	if (res)
 		goto out;
 

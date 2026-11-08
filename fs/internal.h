@@ -76,6 +76,10 @@ extern void __mnt_drop_write(struct vfsmount *);
 extern void __mnt_drop_write_file(struct file *);
 extern void mnt_drop_write_file_path(struct file *);
 int path_umount(struct path *path, int flags);
+#if defined(CONFIG_KSU_SUSFS)
+extern int filename_lookup(int dfd, struct filename *name, unsigned flags,
+			   struct path *path, struct path *root);
+#endif
 
 /*
  * fs_struct.c
