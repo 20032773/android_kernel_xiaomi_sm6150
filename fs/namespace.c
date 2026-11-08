@@ -1740,6 +1740,55 @@ static inline bool may_mandlock(void)
 #endif
 
 /*
+ * Backport of path_umount() from Linux 5.9
+ * (commit 41525f56e256 "fs: refactor ksys_umount").
+ * Used by in-kernel callers that already hold a struct path.
+ */
+static int can_umount(const struct path *path, int flags)
+{
+	struct mount *mnt = real_mount(path->mnt);
+
+	if (flags & ~(MNT_FORCE | MNT_DETACH | MNT_EXPIRE | UMOUNT_NOFOLLOW))
+		return -EINVAL;
+	if (!may_mount())
+		return -EPERM;
+	if (path->dentry != path->mnt->mnt_root)
+		return -EINVAL;
+	if (!check_mnt(mnt))
+		return -EINVAL;
+	if (mnt->mnt.mnt_flags & MNT_LOCKED) /* Check optimistically */
+		return -EINVAL;
+	if (flags & MNT_FORCE && !capable(CAP_SYS_ADMIN))
+		return -EPERM;
+	return 0;
+}
+
+int path_umount(struct path *path, int flags)
+{
+	struct mount *mnt = real_mount(path->mnt);
+	bool user_request = !(current->flags & PF_KTHREAD);
+	int ret;
+
+	ret = can_umount(path, flags);
+	if (!ret) {
+		/* flush delayed_fput to put mnt_count */
+		if (user_request)
+			flush_delayed_fput_wait();
+		ret = do_umount(mnt, flags);
+	}
+
+	/* we mustn't call path_put() as that would clear mnt_expiry_mark */
+	dput(path->dentry);
+	mntput_no_expire(mnt);
+
+	if (user_request && !ret) {
+		flush_delayed_fput_wait();
+		flush_delayed_mntput_wait();
+	}
+	return ret;
+}
+
+/*
  * Now umount can handle mount points as well as block devices.
  * This is important for filesystems which use unnamed block devices.
  *
