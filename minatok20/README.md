@@ -99,10 +99,28 @@ Deliberately **not** changed, by request:
 
 BakaSU's SUSFS support targets the **SUSFS 2.4.0** kernel-side interface, which
 upstream only ships for kernel **5.10+**. There is **no official or community
-SUSFS 2.4.0 backport for 4.14**. A 4.14 SUSFS backport therefore has to be
-written specifically for this tree and can be build-verified but not boot-
-verified here — treat the SUSFS variant as experimental and keep the non-SUSFS
-zip as a fallback. The non-SUSFS (manual hook) variant is the validated one.
+SUSFS 2.4.0 backport for 4.14**, so the kernel side was backported to this tree
+specifically. It is **build-verified but not boot-verified** — treat the SUSFS
+variant as experimental and keep the non-SUSFS zip as a fallback.
+
+SUSFS 2.4.0 uses `thread_info.flags` and `address_space.flags` bits (64-bit on
+arm64), so no new struct/KABI fields are needed.
+
+Ported and enabled in the SUSFS variant:
+
+- **sus_path** — hide user-defined files/paths from lookup.
+- **spoof_uname** — spoof `uname`.
+- **spoof_cmdline** — spoof `/proc/cmdline`.
+- **hide_ksu_susfs_symbols** — hide ksu/susfs symbols from `/proc/kallsyms`.
+- **enable_log**.
+- Module/overlay mount hiding via BakaSU **try_umount** (backported
+  `path_umount()`), instead of the sus_mount display-spoofing.
+
+Intentionally left off on 4.14 (need a 4.14 kstat/statx or mount-namespace
+reimplementation that is too bootloop-prone to ship unverified):
+
+- **sus_kstat** (4.14 `struct kstat` has no `mnt_id`), **sus_map**,
+  **open_redirect**, and the full **sus_mount** mnt_id-spoofing model.
 
 ## Credits
 
