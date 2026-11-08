@@ -129,3 +129,9 @@ kernel/configs/android-*.cfg
 #Ignoring Android.bp link file
 #
 Android.bp
+
+# minatok20 build outputs
+/out/
+/KernelSU/
+/drivers/kernelsu
+/.scmversion
