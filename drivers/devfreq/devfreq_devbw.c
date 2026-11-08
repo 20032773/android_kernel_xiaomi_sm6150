@@ -15,6 +15,9 @@
 
 #include <linux/kernel.h>
 #include <linux/module.h>
+#ifdef CONFIG_DEVFREQ_BOOST
+#include <linux/devfreq_boost.h>
+#endif
 #include <linux/init.h>
 #include <linux/io.h>
 #include <linux/delay.h>
@@ -236,6 +239,10 @@ int devfreq_add_devbw(struct device *dev)
 		msm_bus_scale_unregister_client(d->bus_client);
 		return PTR_ERR(d->df);
 	}
+
+#ifdef CONFIG_DEVFREQ_BOOST
+	devfreq_register_boost_device(DEVFREQ_MSM_CPUBW, d->df);
+#endif
 
 	return 0;
 }

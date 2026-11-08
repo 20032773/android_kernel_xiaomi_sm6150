@@ -164,6 +164,10 @@ struct devfreq {
 
 	struct srcu_notifier_head transition_notifier_list;
 	bool dev_suspended;
+#ifdef CONFIG_DEVFREQ_BOOST
+	bool is_boost_device;
+	bool max_boost;
+#endif
 };
 
 struct devfreq_freqs {
