@@ -1,0 +1,19 @@
+# minatok20 Game Mode — package names that trigger the game profile.
+# One package per line. Lines starting with # are ignored.
+# Find a game's package with:  pm list packages | grep <name>
+# Edit this file (then the module re-reads it automatically) at:
+#   /data/adb/modules/minatok20_gamemode/games.txt
+
+com.miHoYo.Yuanshen
+com.miHoYo.GenshinImpact
+com.miHoYo.hkrpg
+com.tencent.ig
+com.garena.game.codm
+com.activision.callofduty.shooter
+com.tencent.tmgp.sgame
+com.riotgames.league.wildrift
+com.mobile.legends
+com.YoStarEN.AzurLane
+com.epicgames.fortnite
+com.pubg.imobile
+com.supercell.clashofclans
