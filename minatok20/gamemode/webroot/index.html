@@ -91,6 +91,20 @@
 
   <div class="card">
     <div class="row" style="padding-top:0">
+      <div><div class="t">開機微調</div><div class="d">重開機後生效</div></div>
+    </div>
+    <div class="row">
+      <div><div class="t">I/O 排程 deadline</div><div class="d">UFS 讀寫反應（取代 cfq）</div></div>
+      <label class="sw"><input type="checkbox" id="FEAT_IOSCHED"><span class="sl"></span></label>
+    </div>
+    <div class="row">
+      <div><div class="t">zram 3GB</div><div class="d">多工更少重載（關閉＝維持原廠）</div></div>
+      <label class="sw"><input type="checkbox" id="FEAT_ZRAM3"><span class="sl"></span></label>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="padding-top:0">
       <div><div class="t">遊戲清單</div><div class="d">勾選要套用遊戲模式的 App</div></div>
       <div class="count"><span id="sel-count">0</span> 已選</div>
     </div>
@@ -105,7 +119,7 @@
 
 <script>
 const MOD = "/data/adb/modules/minatok20_gamemode";
-const FEATURES = ["ENABLE_GAMEMODE","FEAT_CPU_FLOOR","FEAT_GPU_FLOOR","FEAT_SCHED_MIGRATE","FEAT_SCHEDTUNE","FEAT_DDR_FLOOR","FEAT_TOUCH"];
+const FEATURES = ["ENABLE_GAMEMODE","FEAT_CPU_FLOOR","FEAT_GPU_FLOOR","FEAT_SCHED_MIGRATE","FEAT_SCHEDTUNE","FEAT_DDR_FLOOR","FEAT_TOUCH","FEAT_IOSCHED"];
 let apps = [];        // all user package names
 let selected = new Set();
 
@@ -128,6 +142,8 @@ async function loadConfig(){
     const on = m ? m[1]==="1" : true;
     const el = document.getElementById(f); if(el) el.checked = on;
   }
+  const zm = txt.match(/^ZRAM_SIZE_GB=(\d+)/m);
+  document.getElementById("FEAT_ZRAM3").checked = zm ? (parseInt(zm[1],10) >= 3) : true;
 }
 async function loadGames(){
   const r = await exec(`cat ${MOD}/games.txt 2>/dev/null`);
@@ -171,6 +187,7 @@ async function save(){
   for(const f of FEATURES){ cfg += `${f}=${document.getElementById(f).checked?1:0}\n`; }
   cfg += `CPU_BIG_MIN_GAME=1324800\nGPU_MIN_GAME=430000000\nGPU_IDLE_TIMER_GAME=64\n`;
   cfg += `SCHED_UP_GAME=85\nSCHED_DOWN_GAME=75\nTOPAPP_BOOST_GAME=10\nLLCC_DDR_MIN_GAME=5161\nPOLL=4\n`;
+  cfg += `IOSCHED=deadline\nZRAM_SIZE_GB=${document.getElementById("FEAT_ZRAM3").checked?3:0}\n`;
   await exec(`cat > ${MOD}/config.sh <<'MINATOK_EOF'\n${cfg}MINATOK_EOF`);
   toast("已儲存");
 }

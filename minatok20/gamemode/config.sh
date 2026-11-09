@@ -22,3 +22,8 @@ SCHED_DOWN_GAME=75
 TOPAPP_BOOST_GAME=10
 LLCC_DDR_MIN_GAME=5161
 POLL=4
+
+# Boot-time storage/memory tweaks (applied once per boot).
+FEAT_IOSCHED=1      # set UFS I/O scheduler to $IOSCHED
+IOSCHED=deadline
+ZRAM_SIZE_GB=3      # resize zram to this many GB (0 = leave as-is)

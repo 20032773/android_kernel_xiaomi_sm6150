@@ -93,8 +93,33 @@ foreground_pkg() {
 
 is_game() { grep -q "^$1\$" "$GAMES" 2>/dev/null; }
 
+apply_boot_tweaks() {
+	# I/O scheduler (re-assert in case something changed it after post-fs-data)
+	if [ "${FEAT_IOSCHED:-1}" = 1 ]; then
+		for q in /sys/block/sd*/queue/scheduler; do
+			chmod 0664 "$q" 2>/dev/null
+			echo "${IOSCHED:-deadline}" > "$q" 2>/dev/null
+		done
+	fi
+	# zram resize (only if the size differs; brief swapoff window)
+	if [ "${ZRAM_SIZE_GB:-0}" -gt 0 ] && [ -e /sys/block/zram0/disksize ]; then
+		want=$((ZRAM_SIZE_GB * 1073741824))
+		cur=$(r /sys/block/zram0/disksize)
+		if [ "$cur" != "$want" ]; then
+			swapoff /dev/block/zram0 2>/dev/null
+			echo 1 > /sys/block/zram0/reset 2>/dev/null
+			echo "$want" > /sys/block/zram0/disksize 2>/dev/null
+			mkswap /dev/block/zram0 >/dev/null 2>&1
+			swapon /dev/block/zram0 2>/dev/null
+		fi
+	fi
+}
+
 until [ "$(getprop sys.boot_completed)" = "1" ]; do sleep 5; done
 sleep 20
+
+load_config
+apply_boot_tweaks
 
 echo balanced > "$STATE_DIR/mode"
 MODE=balanced
