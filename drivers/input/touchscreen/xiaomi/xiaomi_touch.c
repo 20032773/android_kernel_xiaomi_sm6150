@@ -433,6 +433,51 @@ static DEVICE_ATTR(panel_display, 0644, xiaomi_panel_display_show, NULL);
 static DEVICE_ATTR(panel_vendor, 0644, xiaomi_panel_vendor_show, NULL);
 static DEVICE_ATTR(panel_color, 0644, xiaomi_panel_color_show, NULL);
 
+/*
+ * touch_mode: a sysfs front-end for the SET_CUR_VALUE/GET_CUR_VALUE ioctls, so
+ * userspace (e.g. a game-mode script) can toggle the vendor touch modes
+ * (Touch_Game_Mode = 0, Touch_Report_Rate = 9, ...) without the MIUI app.
+ *   write "<mode> <value>" to set, e.g. "0 1" to enable game mode.
+ *   read back the last mode written, as "<mode> <value>".
+ */
+static int touch_mode_last = -1;
+
+static ssize_t touch_mode_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct xiaomi_touch_pdata *pdata = dev_get_drvdata(dev);
+	int val = -1;
+
+	if (pdata && pdata->touch_data && pdata->touch_data->getModeValue &&
+	    touch_mode_last >= 0)
+		val = pdata->touch_data->getModeValue(touch_mode_last,
+						      GET_CUR_VALUE);
+
+	return snprintf(buf, PAGE_SIZE, "%d %d\n", touch_mode_last, val);
+}
+
+static ssize_t touch_mode_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct xiaomi_touch_pdata *pdata = dev_get_drvdata(dev);
+	int mode = 0, value = 0;
+
+	if (sscanf(buf, "%d %d", &mode, &value) != 2)
+		return -EINVAL;
+
+	if (pdata && pdata->touch_data && pdata->touch_data->setModeValue) {
+		pdata->touch_data->setModeValue(mode, value);
+		touch_mode_last = mode;
+	} else {
+		MI_TOUCH_LOGE(1, "%s %s: setModeValue not implemented\n",
+			      MI_TAG, __func__);
+	}
+
+	return count;
+}
+static DEVICE_ATTR(touch_mode, (S_IRUGO | S_IWUSR | S_IWGRP),
+		   touch_mode_show, touch_mode_store);
+
 static struct attribute *touch_attr_group[] = {
 	&dev_attr_double_tap.attr,
 	&dev_attr_palm_sensor.attr,
@@ -442,6 +487,7 @@ static struct attribute *touch_attr_group[] = {
 	&dev_attr_panel_vendor.attr,
 	&dev_attr_panel_display.attr,
 	&dev_attr_panel_color.attr,
+	&dev_attr_touch_mode.attr,
 	NULL,
 };
 
