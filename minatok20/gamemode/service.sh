@@ -14,7 +14,7 @@ CPU_BIG="/sys/devices/system/cpu/cpu6/cpufreq"
 GPU="/sys/class/kgsl/kgsl-3d0"
 TOPAPP="/dev/stune/top-app"
 LLCC_DDR="/sys/class/devfreq/soc:qcom,cpu-llcc-ddr-bw"
-TOUCH="/sys/devices/platform/soc/soc:xiaomi_touch/touch_mode"
+TOUCH="/sys/class/touch/touch_dev/touch_mode"
 
 mkdir -p "$STATE_DIR"
 

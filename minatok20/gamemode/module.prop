@@ -1,6 +1,6 @@
 id=minatok20_gamemode
 name=minatok20 Game Mode
-version=v2
-versionCode=2
+version=v2.1
+versionCode=3
 author=minatok20
 description=Per-game performance profile for Xiaomi Mi 9T (davinci) with a WebUI to pick games and toggle each feature. Raises CPU/GPU/DDR floors (no overclock), speeds up big-core migration and top-app scheduling, and enables the hardware touch game mode; reverts on exit.
