@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>minatok20 Game Mode</title>
+<style>
+  :root{
+    --bg:#0f1115; --card:#181b22; --card2:#20242e; --text:#e7e9ee; --muted:#9aa3b2;
+    --accent:#4f8cff; --accent2:#2bd576; --line:#2a2f3a; --danger:#ff5d5d;
+  }
+  @media (prefers-color-scheme: light){
+    :root{--bg:#f3f5f9;--card:#fff;--card2:#eef1f6;--text:#1a1d24;--muted:#5c6472;--line:#e2e6ee;}
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,"Noto Sans CJK TC","Roboto",system-ui,sans-serif;
+    padding:env(safe-area-inset-top) 14px calc(80px + env(safe-area-inset-bottom)) 14px;}
+  h1{font-size:19px;margin:16px 2px 4px}
+  .sub{color:var(--muted);font-size:13px;margin:0 2px 14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin:0 0 12px}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 2px}
+  .row+.row{border-top:1px solid var(--line)}
+  .row .t{font-size:15px}
+  .row .d{color:var(--muted);font-size:12px;margin-top:2px}
+  .status{display:flex;gap:10px;flex-wrap:wrap}
+  .pill{background:var(--card2);border-radius:999px;padding:6px 12px;font-size:13px}
+  .pill b{color:var(--accent2)}
+  /* switch */
+  .sw{position:relative;width:48px;height:28px;flex:0 0 auto}
+  .sw input{opacity:0;width:0;height:0}
+  .sl{position:absolute;inset:0;background:var(--card2);border:1px solid var(--line);border-radius:999px;transition:.2s}
+  .sl:before{content:"";position:absolute;height:20px;width:20px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}
+  .sw input:checked + .sl{background:var(--accent)}
+  .sw input:checked + .sl:before{transform:translateX(20px)}
+  .search{width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--line);
+    background:var(--card2);color:var(--text);font-size:15px;margin-bottom:8px}
+  .app{display:flex;align-items:center;gap:11px;padding:10px 4px;border-top:1px solid var(--line)}
+  .app:first-child{border-top:none}
+  .app .pk{font-size:14px;word-break:break-all;flex:1}
+  .app input{width:22px;height:22px;accent-color:var(--accent)}
+  .bar{position:fixed;left:0;right:0;bottom:0;padding:12px 14px calc(12px + env(safe-area-inset-bottom));
+    background:linear-gradient(transparent,var(--bg) 24%);display:flex;gap:10px}
+  button{flex:1;padding:14px;border:none;border-radius:12px;font-size:16px;font-weight:600;color:#fff;background:var(--accent)}
+  button.sec{background:var(--card2);color:var(--text);border:1px solid var(--line)}
+  .muted{color:var(--muted);font-size:12px;text-align:center;margin:8px 0}
+  .count{color:var(--accent);font-size:13px}
+</style>
+</head>
+<body>
+  <h1>minatok20 Game Mode</h1>
+  <p class="sub">開遊戲時自動提升效能、退出還原。最高頻率不動、不超頻。</p>
+
+  <div class="card">
+    <div class="status">
+      <span class="pill">狀態 <b id="st-mode">—</b></span>
+      <span class="pill">前景 <span id="st-fg">—</span></span>
+    </div>
+  </div>
+
+  <div class="card" id="feat-card">
+    <div class="row">
+      <div><div class="t">啟用遊戲模式</div><div class="d">總開關</div></div>
+      <label class="sw"><input type="checkbox" id="ENABLE_GAMEMODE"><span class="sl"></span></label>
+    </div>
+    <div class="row">
+      <div><div class="t">CPU 大核下限</div><div class="d">遊戲時大核最低頻率拉高</div></div>
+      <label class="sw"><input type="checkbox" id="FEAT_CPU_FLOOR"><span class="sl"></span></label>
+    </div>
+    <div class="row">
+      <div><div class="t">GPU 下限 + 快速拉頻</div><div class="d">GPU 最低頻率與反應</div></div>
+      <label class="sw"><input type="checkbox" id="FEAT_GPU_FLOOR"><span class="sl"></span></label>
+    </div>
+    <div class="row">
+      <div><div class="t">大核遷移門檻</div><div class="d">主執行緒更快上大核</div></div>
+      <label class="sw"><input type="checkbox" id="FEAT_SCHED_MIGRATE"><span class="sl"></span></label>
+    </div>
+    <div class="row">
+      <div><div class="t">前景排程 boost</div><div class="d">top-app schedtune</div></div>
+      <label class="sw"><input type="checkbox" id="FEAT_SCHEDTUNE"><span class="sl"></span></label>
+    </div>
+    <div class="row">
+      <div><div class="t">記憶體頻寬下限</div><div class="d">DDR / LLCC 頻寬</div></div>
+      <label class="sw"><input type="checkbox" id="FEAT_DDR_FLOOR"><span class="sl"></span></label>
+    </div>
+    <div class="row">
+      <div><div class="t">觸控遊戲模式</div><div class="d">高回報率/低延遲（需新內核）</div></div>
+      <label class="sw"><input type="checkbox" id="FEAT_TOUCH"><span class="sl"></span></label>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="padding-top:0">
+      <div><div class="t">遊戲清單</div><div class="d">勾選要套用遊戲模式的 App</div></div>
+      <div class="count"><span id="sel-count">0</span> 已選</div>
+    </div>
+    <input class="search" id="search" placeholder="搜尋套件名…">
+    <div id="applist"><p class="muted">載入中…</p></div>
+  </div>
+
+  <div class="bar">
+    <button class="sec" onclick="reload()">重新整理</button>
+    <button onclick="save()">儲存</button>
+  </div>
+
+<script>
+const MOD = "/data/adb/modules/minatok20_gamemode";
+const FEATURES = ["ENABLE_GAMEMODE","FEAT_CPU_FLOOR","FEAT_GPU_FLOOR","FEAT_SCHED_MIGRATE","FEAT_SCHEDTUNE","FEAT_DDR_FLOOR","FEAT_TOUCH"];
+let apps = [];        // all user package names
+let selected = new Set();
+
+function exec(cmd){
+  return new Promise((resolve)=>{
+    try{
+      const cb = "cb_"+Math.random().toString(36).slice(2);
+      window[cb] = (errno, stdout, stderr)=>{ delete window[cb]; resolve({errno, stdout:stdout||"", stderr:stderr||""}); };
+      ksu.exec(cmd, "{}", cb);
+    }catch(e){ resolve({errno:1, stdout:"", stderr:String(e)}); }
+  });
+}
+function toast(m){ try{ ksu.toast(m); }catch(e){ console.log(m); } }
+
+async function loadConfig(){
+  const r = await exec(`cat ${MOD}/config.sh 2>/dev/null`);
+  const txt = r.stdout;
+  for(const f of FEATURES){
+    const m = txt.match(new RegExp("^"+f+"=([01])","m"));
+    const on = m ? m[1]==="1" : true;
+    const el = document.getElementById(f); if(el) el.checked = on;
+  }
+}
+async function loadGames(){
+  const r = await exec(`cat ${MOD}/games.txt 2>/dev/null`);
+  selected = new Set(r.stdout.split("\n").map(s=>s.trim()).filter(s=>s && !s.startsWith("#")));
+}
+async function loadApps(){
+  const r = await exec("pm list packages -3 2>/dev/null | sed 's/package://' | sort");
+  apps = r.stdout.split("\n").map(s=>s.trim()).filter(Boolean);
+  // make sure any already-selected (even system) apps are shown
+  for(const s of selected){ if(!apps.includes(s)) apps.push(s); }
+  apps.sort();
+}
+async function loadStatus(){
+  const m = await exec(`cat ${MOD}/.state/mode 2>/dev/null`);
+  const f = await exec(`cat ${MOD}/.state/fg 2>/dev/null`);
+  document.getElementById("st-mode").textContent = (m.stdout.trim()==="game")?"遊戲":"平衡";
+  document.getElementById("st-fg").textContent = f.stdout.trim()||"—";
+}
+function renderApps(){
+  const q = document.getElementById("search").value.toLowerCase();
+  const list = document.getElementById("applist");
+  const shown = apps.filter(a=>a.toLowerCase().includes(q));
+  // selected first
+  shown.sort((a,b)=>(selected.has(b)?1:0)-(selected.has(a)?1:0) || a.localeCompare(b));
+  list.innerHTML = shown.slice(0,400).map(pk=>{
+    const id = "a_"+btoa(pk).replace(/=/g,"");
+    return `<label class="app"><span class="pk">${pk}</span>
+      <input type="checkbox" id="${id}" ${selected.has(pk)?"checked":""}
+        onchange="toggleApp('${pk}',this.checked)"></label>`;
+  }).join("") || '<p class="muted">沒有符合的 App</p>';
+  document.getElementById("sel-count").textContent = selected.size;
+}
+function toggleApp(pk, on){ on?selected.add(pk):selected.delete(pk); document.getElementById("sel-count").textContent=selected.size; }
+
+async function save(){
+  // games.txt
+  const games = Array.from(selected).join("\n");
+  await exec(`cat > ${MOD}/games.txt <<'MINATOK_EOF'\n${games}\nMINATOK_EOF`);
+  // config.sh — regenerate the feature lines, keep the profile values block
+  let cfg = `# minatok20 Game Mode configuration (written by WebUI).\n`;
+  for(const f of FEATURES){ cfg += `${f}=${document.getElementById(f).checked?1:0}\n`; }
+  cfg += `CPU_BIG_MIN_GAME=1324800\nGPU_MIN_GAME=430000000\nGPU_IDLE_TIMER_GAME=64\n`;
+  cfg += `SCHED_UP_GAME=85\nSCHED_DOWN_GAME=75\nTOPAPP_BOOST_GAME=10\nLLCC_DDR_MIN_GAME=5161\nPOLL=4\n`;
+  await exec(`cat > ${MOD}/config.sh <<'MINATOK_EOF'\n${cfg}MINATOK_EOF`);
+  toast("已儲存");
+}
+
+async function reload(){
+  await loadConfig(); await loadGames(); await loadApps(); renderApps(); await loadStatus();
+}
+document.getElementById("search").addEventListener("input", renderApps);
+setInterval(loadStatus, 4000);
+reload();
+</script>
+</body>
+</html>
